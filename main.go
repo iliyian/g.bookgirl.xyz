@@ -16,6 +16,9 @@ func checkErr(err error) {
 	}
 }
 
+var googleReg = regexp.MustCompile("www.google.com")
+var cookieReg = regexp.MustCompile(".google.com")
+
 func getGoogle(url string, header http.Header) *http.Response {
 	// log.Println("url:", url)
 	req, err := http.NewRequest("GET", url, nil)
@@ -29,7 +32,7 @@ func getGoogle(url string, header http.Header) *http.Response {
 	return resp
 }
 
-const site string = "127.0.0.1"
+const site string = "g.bookgirl.xyz"
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -39,27 +42,33 @@ func main() {
 		unescUri, err := url.PathUnescape(uri)
 		checkErr(err)
 		log.Println(addr, r.Method, "UserAgent:", agent, "URI:", unescUri)
+		// 获取请求的基础信息
 
 		if r.Method != "GET" {
 			log.Fatal("Find none GET method.")
 		}
+		// 以防万一，因为目前只写了GET
 
 		resp := getGoogle("https://www.google.com" + uri, r.Header)
 		content, err := io.ReadAll(resp.Body)
 		checkErr(err)
-		// log.Println("Response body", string(content))
 		defer resp.Body.Close()
+		// 服务器获取指定内容
 
-		// w.Write(content)
-		reg, err := regexp.Compile("www.google.com")
-		checkErr(err)
-		html := reg.ReplaceAll(content, []byte(site))
+		html := googleReg.ReplaceAll(content, []byte(site))
 		w.Write(html)
-		// log.Println("html", string(html))
+		// 更换掉文本中的www.google.com
 
 		for k, v := range resp.Header {
-			w.Header().Set(k, strings.Join(v, ""))
+			value := strings.Join(v, "")
+			if k == "Set-Cookie" {
+				value = cookieReg.ReplaceAllString(value, ".bookgirl.xyz")
+				// log.Println("GOT SET-COOKIE, value:", value)
+				// 更换掉 cookie 中的.google.com域名，实现cookie存储
+			}
+			w.Header().Set(k, value)
 		}
+		log.Println("Response headers", resp.Header)
 	})
 	log.Println("Start to listen on :1984")
 	err := http.ListenAndServe(":1984", nil)
